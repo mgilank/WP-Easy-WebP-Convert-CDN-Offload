@@ -32,11 +32,57 @@ class Cf_Webp_Admin {
 
 		add_settings_field(
 			'enable_r2',
-			'Enable R2 Offload',
+			'Enable CDN Offload',
 			array( $this, 'render_checkbox_field' ),
 			'cf-webp-converter',
 			'cf_webp_r2_section',
-			array( 'label_for' => 'enable_r2' )
+			array( 'label_for' => 'enable_r2', 'description' => 'Upload WebP files to cloud storage (R2/S3).' )
+		);
+		
+		add_settings_field(
+			'storage_provider',
+			'Storage Provider',
+			array( $this, 'render_select_field' ),
+			'cf-webp-converter',
+			'cf_webp_r2_section',
+			array( 
+				'label_for' => 'storage_provider',
+				'options' => array(
+					'r2' => 'Cloudflare R2',
+					's3' => 'AWS S3',
+					'spaces' => 'DigitalOcean Spaces',
+					'wasabi' => 'Wasabi',
+					'backblaze' => 'Backblaze B2',
+					'custom' => 'Custom S3-Compatible'
+				),
+				'description' => 'Choose your cloud storage provider.'
+			)
+		);
+		
+		add_settings_field(
+			'storage_region',
+			'Storage Region',
+			array( $this, 'render_text_field' ),
+			'cf-webp-converter',
+			'cf_webp_r2_section',
+			array( 
+				'label_for' => 'storage_region',
+				'placeholder' => 'e.g., us-east-1, nyc3, us-east-1',
+				'description' => 'Required for AWS S3, DigitalOcean Spaces, Wasabi, and Backblaze. Use "auto" for Cloudflare R2.'
+			)
+		);
+		
+		add_settings_field(
+			'storage_endpoint',
+			'Custom Endpoint (Optional)',
+			array( $this, 'render_text_field' ),
+			'cf-webp-converter',
+			'cf_webp_r2_section',
+			array( 
+				'label_for' => 'storage_endpoint',
+				'placeholder' => 'https://s3.example.com',
+				'description' => 'Only needed for custom S3-compatible storage. Leave empty for standard providers.'
+			)
 		);
 
 		add_settings_field(
@@ -188,6 +234,20 @@ class Cf_Webp_Admin {
         $new_input['preferred_url_type'] = isset( $input['preferred_url_type'] ) && in_array( $input['preferred_url_type'], array( 'local', 'r2' ) )
             ? sanitize_text_field( $input['preferred_url_type'] )
             : 'local';
+        
+        // Storage provider settings
+        $valid_providers = array( 'r2', 's3', 'spaces', 'wasabi', 'backblaze', 'custom' );
+        $new_input['storage_provider'] = isset( $input['storage_provider'] ) && in_array( $input['storage_provider'], $valid_providers )
+            ? sanitize_text_field( $input['storage_provider'] )
+            : 'r2';
+        
+        $new_input['storage_region'] = isset( $input['storage_region'] )
+            ? sanitize_text_field( $input['storage_region'] )
+            : 'auto';
+        
+        $new_input['storage_endpoint'] = isset( $input['storage_endpoint'] ) && $input['storage_endpoint'] !== ''
+            ? esc_url_raw( $input['storage_endpoint'] )
+            : '';
 
 		return $new_input;
 	}
@@ -198,7 +258,25 @@ class Cf_Webp_Admin {
 		$value = isset( $options[$id] ) ? $options[$id] : '';
 		$type = isset( $args['type'] ) ? $args['type'] : 'text';
 		$placeholder = isset( $args['placeholder'] ) ? $args['placeholder'] : '';
+		$description = isset( $args['description'] ) ? '<p class="description">' . $args['description'] . '</p>' : '';
 		echo '<input type="' . $type . '" id="' . $id . '" name="' . $this->option_name . '[' . $id . ']" value="' . esc_attr( $value ) . '" placeholder="' . esc_attr( $placeholder ) . '" class="regular-text">';
+		echo $description;
+	}
+	
+	public function render_select_field( $args ) {
+		$options = get_option( $this->option_name );
+		$id = $args['label_for'];
+		$current_value = isset( $options[$id] ) ? $options[$id] : '';
+		$select_options = isset( $args['options'] ) ? $args['options'] : array();
+		$description = isset( $args['description'] ) ? '<p class="description">' . $args['description'] . '</p>' : '';
+		
+		echo '<select id="' . $id . '" name="' . $this->option_name . '[' . $id . ']" class="regular-text">';
+		foreach ( $select_options as $value => $label ) {
+			$selected = ( $current_value === $value ) ? 'selected' : '';
+			echo '<option value="' . esc_attr( $value ) . '" ' . $selected . '>' . esc_html( $label ) . '</option>';
+		}
+		echo '</select>';
+		echo $description;
 	}
 
     public function render_checkbox_field( $args ) {

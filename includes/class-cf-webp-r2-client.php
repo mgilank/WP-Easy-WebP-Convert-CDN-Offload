@@ -7,6 +7,8 @@ class Cf_Webp_R2_Client {
 	private $secret_key;
 	private $bucket;
 	private $endpoint;
+	private $region;
+	private $provider;
 
 	public function __construct() {
 		$options = get_option( 'cf_webp_settings' );
@@ -14,9 +16,42 @@ class Cf_Webp_R2_Client {
 		$this->access_key = isset( $options['r2_access_key'] ) ? $options['r2_access_key'] : '';
 		$this->secret_key = isset( $options['r2_secret_key'] ) ? $options['r2_secret_key'] : '';
 		$this->bucket     = isset( $options['r2_bucket'] ) ? $options['r2_bucket'] : '';
+		$this->provider   = isset( $options['storage_provider'] ) ? $options['storage_provider'] : 'r2';
+		$this->region     = isset( $options['storage_region'] ) ? $options['storage_region'] : 'auto';
 		
-		// R2 Endpoint: https://<accountid>.r2.cloudflarestorage.com
-		$this->endpoint = "https://{$this->account_id}.r2.cloudflarestorage.com";
+		// Set endpoint based on provider
+		$custom_endpoint = isset( $options['storage_endpoint'] ) ? $options['storage_endpoint'] : '';
+		
+		if ( ! empty( $custom_endpoint ) && $this->provider === 'custom' ) {
+			// Use custom endpoint
+			$this->endpoint = rtrim( $custom_endpoint, '/' );
+		} else {
+			// Use provider-specific endpoint
+			switch ( $this->provider ) {
+				case 's3':
+					// AWS S3: https://s3.{region}.amazonaws.com
+					$this->endpoint = "https://s3.{$this->region}.amazonaws.com";
+					break;
+				case 'spaces':
+					// DigitalOcean Spaces: https://{region}.digitaloceanspaces.com
+					$this->endpoint = "https://{$this->region}.digitaloceanspaces.com";
+					break;
+				case 'wasabi':
+					// Wasabi: https://s3.{region}.wasabisys.com
+					$this->endpoint = "https://s3.{$this->region}.wasabisys.com";
+					break;
+				case 'backblaze':
+					// Backblaze B2: https://s3.{region}.backblazeb2.com
+					$this->endpoint = "https://s3.{$this->region}.backblazeb2.com";
+					break;
+				case 'r2':
+				default:
+					// Cloudflare R2: https://{accountid}.r2.cloudflarestorage.com
+					$this->endpoint = "https://{$this->account_id}.r2.cloudflarestorage.com";
+					$this->region = 'auto'; // R2 always uses 'auto'
+					break;
+			}
+		}
 	}
 
 	public function is_configured() {
@@ -122,7 +157,7 @@ class Cf_Webp_R2_Client {
 
 	private function sign_request( $method, $uri, $headers, $payload ) {
 		$service = 's3';
-		$region = 'auto';
+		$region = $this->region;
 		$algorithm = 'AWS4-HMAC-SHA256';
 		$now = time();
 		$amz_date = gmdate( 'Ymd\THis\Z', $now );
