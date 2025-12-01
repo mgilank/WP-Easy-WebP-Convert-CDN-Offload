@@ -1,0 +1,514 @@
+<?php
+
+class Cf_Webp_Admin {
+
+	private $option_name = 'cf_webp_settings';
+
+	public function run() {
+		add_action( 'admin_menu', array( $this, 'add_plugin_admin_menu' ) );
+		add_action( 'admin_init', array( $this, 'register_settings' ) );
+		add_action( 'admin_notices', array( $this, 'show_conversion_method_notice' ) );
+	}
+
+	public function add_plugin_admin_menu() {
+		add_options_page(
+			'Easy WebP Converter',
+			'Easy WebP Converter',
+			'manage_options',
+			'cf-webp-converter',
+			array( $this, 'display_plugin_setup_page' )
+		);
+	}
+
+	public function register_settings() {
+		register_setting( $this->option_name, $this->option_name, array( $this, 'sanitize_settings' ) );
+
+		add_settings_section(
+			'cf_webp_r2_section',
+			'CDN Offload Settings (R2)',
+			null,
+			'cf-webp-converter'
+		);
+
+		add_settings_field(
+			'enable_r2',
+			'Enable R2 Offload',
+			array( $this, 'render_checkbox_field' ),
+			'cf-webp-converter',
+			'cf_webp_r2_section',
+			array( 'label_for' => 'enable_r2' )
+		);
+
+		add_settings_field(
+			'r2_account_id',
+			'Account ID',
+			array( $this, 'render_text_field' ),
+			'cf-webp-converter',
+			'cf_webp_r2_section',
+			array( 'label_for' => 'r2_account_id' )
+		);
+
+		add_settings_field(
+			'r2_access_key',
+			'Access Key ID',
+			array( $this, 'render_text_field' ),
+			'cf-webp-converter',
+			'cf_webp_r2_section',
+			array( 'label_for' => 'r2_access_key' )
+		);
+
+		add_settings_field(
+			'r2_secret_key',
+			'Secret Access Key',
+			array( $this, 'render_text_field' ),
+			'cf-webp-converter',
+			'cf_webp_r2_section',
+			array( 'label_for' => 'r2_secret_key', 'type' => 'password' )
+		);
+
+		add_settings_field(
+			'r2_bucket',
+			'Bucket Name',
+			array( $this, 'render_text_field' ),
+			'cf-webp-converter',
+			'cf_webp_r2_section',
+			array( 'label_for' => 'r2_bucket' )
+		);
+
+		add_settings_field(
+			'r2_domain',
+			'Public Domain (e.g., https://cdn.example.com)',
+			array( $this, 'render_text_field' ),
+			'cf-webp-converter',
+			'cf_webp_r2_section',
+			array( 'label_for' => 'r2_domain' )
+		);
+
+        add_settings_section(
+			'cf_webp_general_section',
+			'General Settings',
+			null,
+			'cf-webp-converter'
+		);
+
+        add_settings_field(
+			'keep_original',
+			'Keep Original Images',
+			array( $this, 'render_checkbox_field' ),
+			'cf-webp-converter',
+			'cf_webp_general_section',
+			array( 'label_for' => 'keep_original', 'description' => 'If unchecked, original images will be deleted after conversion/upload.' )
+		);
+
+		add_settings_field(
+			'use_external_api',
+			'Use External API',
+			array( $this, 'render_checkbox_field' ),
+			'cf-webp-converter',
+			'cf_webp_general_section',
+			array( 'label_for' => 'use_external_api', 'description' => 'Enable external API for WebP conversion (disables local PHP conversion).' )
+		);
+
+		add_settings_field(
+			'external_api_url',
+			'External API URL',
+			array( $this, 'render_text_field' ),
+			'cf-webp-converter',
+			'cf_webp_general_section',
+			array( 'label_for' => 'external_api_url', 'placeholder' => 'http://your-vps-ip:3000/convert' )
+		);
+
+		add_settings_field(
+			'external_api_key',
+			'External API Key (Optional)',
+			array( $this, 'render_text_field' ),
+			'cf-webp-converter',
+			'cf_webp_general_section',
+			array( 'label_for' => 'external_api_key', 'type' => 'password', 'placeholder' => 'Leave empty if no API key required' )
+		);
+	}
+
+	public function sanitize_settings( $input ) {
+		// Get existing options to preserve values not in the current input
+		$existing_options = get_option( $this->option_name, array() );
+		$new_input = array();
+		
+        $new_input['enable_r2'] = isset( $input['enable_r2'] ) ? 1 : 0;
+        
+        // Preserve R2 credentials even when R2 is disabled
+        // Only update if new values are provided, otherwise keep existing
+        $new_input['r2_account_id'] = isset( $input['r2_account_id'] ) && $input['r2_account_id'] !== '' 
+            ? sanitize_text_field( $input['r2_account_id'] ) 
+            : ( isset( $existing_options['r2_account_id'] ) ? $existing_options['r2_account_id'] : '' );
+            
+        $new_input['r2_access_key'] = isset( $input['r2_access_key'] ) && $input['r2_access_key'] !== '' 
+            ? sanitize_text_field( $input['r2_access_key'] ) 
+            : ( isset( $existing_options['r2_access_key'] ) ? $existing_options['r2_access_key'] : '' );
+            
+        $new_input['r2_secret_key'] = isset( $input['r2_secret_key'] ) && $input['r2_secret_key'] !== '' 
+            ? sanitize_text_field( $input['r2_secret_key'] ) 
+            : ( isset( $existing_options['r2_secret_key'] ) ? $existing_options['r2_secret_key'] : '' );
+            
+        $new_input['r2_bucket'] = isset( $input['r2_bucket'] ) && $input['r2_bucket'] !== '' 
+            ? sanitize_text_field( $input['r2_bucket'] ) 
+            : ( isset( $existing_options['r2_bucket'] ) ? $existing_options['r2_bucket'] : '' );
+            
+        $new_input['r2_domain'] = isset( $input['r2_domain'] ) && $input['r2_domain'] !== '' 
+            ? esc_url_raw( $input['r2_domain'] ) 
+            : ( isset( $existing_options['r2_domain'] ) ? $existing_options['r2_domain'] : '' );
+        
+        $new_input['keep_original'] = isset( $input['keep_original'] ) ? 1 : 0;
+        $new_input['use_external_api'] = isset( $input['use_external_api'] ) ? 1 : 0;
+        
+        // Preserve external API settings similarly
+        $new_input['external_api_url'] = isset( $input['external_api_url'] ) && $input['external_api_url'] !== '' 
+            ? esc_url_raw( $input['external_api_url'] ) 
+            : ( isset( $existing_options['external_api_url'] ) ? $existing_options['external_api_url'] : '' );
+            
+        $new_input['external_api_key'] = isset( $input['external_api_key'] ) && $input['external_api_key'] !== '' 
+            ? sanitize_text_field( $input['external_api_key'] ) 
+            : ( isset( $existing_options['external_api_key'] ) ? $existing_options['external_api_key'] : '' );
+
+		return $new_input;
+	}
+
+	public function render_text_field( $args ) {
+		$options = get_option( $this->option_name );
+		$id = $args['label_for'];
+		$value = isset( $options[$id] ) ? $options[$id] : '';
+		$type = isset( $args['type'] ) ? $args['type'] : 'text';
+		$placeholder = isset( $args['placeholder'] ) ? $args['placeholder'] : '';
+		echo '<input type="' . $type . '" id="' . $id . '" name="' . $this->option_name . '[' . $id . ']" value="' . esc_attr( $value ) . '" placeholder="' . esc_attr( $placeholder ) . '" class="regular-text">';
+	}
+
+    public function render_checkbox_field( $args ) {
+		$options = get_option( $this->option_name );
+		$id = $args['label_for'];
+		$checked = isset( $options[$id] ) && $options[$id] ? 'checked' : '';
+        $description = isset( $args['description'] ) ? '<p class="description">' . $args['description'] . '</p>' : '';
+		echo '<input type="checkbox" id="' . $id . '" name="' . $this->option_name . '[' . $id . ']" value="1" ' . $checked . '>';
+        echo $description;
+	}
+
+	public function display_plugin_setup_page() {
+		$active_tab = isset( $_GET['tab'] ) ? $_GET['tab'] : 'settings';
+		?>
+		<div class="wrap">
+			<h1>Easy WebP Converter & CDN Offload</h1>
+			<h2 class="nav-tab-wrapper">
+				<a href="?page=cf-webp-converter&tab=settings" class="nav-tab <?php echo $active_tab == 'settings' ? 'nav-tab-active' : ''; ?>">Settings</a>
+				<a href="?page=cf-webp-converter&tab=bulk" class="nav-tab <?php echo $active_tab == 'bulk' ? 'nav-tab-active' : ''; ?>">Bulk Convert</a>
+			</h2>
+
+			<?php if ( $active_tab == 'settings' ) : ?>
+				<div style="display: flex; gap: 20px;">
+					<div style="flex: 1;">
+						<form action="options.php" method="post">
+							<?php
+							settings_fields( $this->option_name );
+							do_settings_sections( 'cf-webp-converter' );
+							submit_button();
+							?>
+						</form>
+					</div>
+					<div style="width: 350px;">
+						<div class="card">
+							<h2 style="margin-top: 0;">System Status</h2>
+							<?php
+							$method = Cf_Webp_Worker_Client::get_conversion_method();
+							$has_gd = function_exists( 'imagewebp' );
+							$has_imagick = class_exists( 'Imagick' );
+							?>
+							<table class="widefat">
+								<tbody>
+									<tr>
+										<td><strong>GD Library</strong></td>
+										<td><?php echo $has_gd ? '<span style="color: #46b450;">✅ Available</span>' : '<span style="color: #dc3232;">❌ Not Available</span>'; ?></td>
+									</tr>
+									<tr>
+										<td><strong>ImageMagick</strong></td>
+										<td><?php echo $has_imagick ? '<span style="color: #46b450;">✅ Available</span>' : '<span style="color: #dc3232;">❌ Not Available</span>'; ?></td>
+									</tr>
+									<tr>
+										<td><strong>Active Method</strong></td>
+										<td><?php 
+											if ( $method !== 'None' ) {
+												echo '<span style="color: #46b450;"><strong>' . esc_html( $method ) . '</strong></span>';
+											} else {
+												echo '<span style="color: #dc3232;"><strong>None</strong></span>';
+											}
+										?></td>
+									</tr>
+									<tr>
+										<td><strong>PHP Version</strong></td>
+										<td><?php echo phpversion(); ?></td>
+									</tr>
+								</tbody>
+							</table>
+							<?php if ( $method === 'None' ) : ?>
+								<div class="notice notice-error inline" style="margin: 15px 0 0 0; padding: 8px 12px;">
+									<p style="margin: 0;"><strong>Action Required:</strong> Install GD or ImageMagick.</p>
+								</div>
+							<?php else : ?>
+								<div class="notice notice-success inline" style="margin: 15px 0 0 0; padding: 8px 12px;">
+									<p style="margin: 0;"><strong>Ready!</strong> WebP conversion is enabled.</p>
+								</div>
+							<?php endif; ?>
+							<p style="margin-top: 15px;">
+								<a href="?page=cf-webp-converter&tab=status" class="button">View Detailed Status →</a>
+							</p>
+						</div>
+					</div>
+				</div>
+				<script>
+				jQuery(document).ready(function($) {
+					// Toggle R2 fields based on checkbox
+					function toggleR2Fields() {
+						var isChecked = $('#enable_r2').is(':checked');
+						// Only change visual appearance, don't disable to preserve values on submit
+						$('#r2_account_id, #r2_access_key, #r2_secret_key, #r2_bucket, #r2_domain')
+							.css('opacity', isChecked ? '1' : '0.5')
+							.attr('readonly', !isChecked);
+					}
+					
+					// Toggle external API fields based on checkbox
+					function toggleExternalAPIFields() {
+						var isChecked = $('#use_external_api').is(':checked');
+						// Only change visual appearance, don't disable to preserve values on submit
+						$('#external_api_url, #external_api_key')
+							.css('opacity', isChecked ? '1' : '0.5')
+							.attr('readonly', !isChecked);
+					}
+					
+					// Run on page load
+					toggleR2Fields();
+					toggleExternalAPIFields();
+					
+					// Run when checkboxes change
+					$('#enable_r2').on('change', toggleR2Fields);
+					$('#use_external_api').on('change', toggleExternalAPIFields);
+				});
+				</script>
+			<?php else : ?>
+				<div class="card">
+					<h2>Bulk Convert Existing Images</h2>
+					<p>This tool will scan your Media Library for images that haven't been converted yet and process them.</p>
+					<p><strong>Note:</strong> Keep this tab open while the process runs.</p>
+					<button id="cf-webp-start-bulk" class="button button-primary">Start Bulk Conversion</button>
+					<div id="cf-webp-progress" style="margin-top: 20px; display: none;">
+						<div class="spinner is-active" style="float: none; margin: 0 10px 0 0;"></div>
+						<span id="cf-webp-status-text">Processing...</span>
+						<div id="cf-webp-log" style="margin-top: 10px; max-height: 300px; overflow-y: auto; background: #f0f0f1; padding: 10px; border: 1px solid #ccc;"></div>
+					</div>
+				</div>
+				<script>
+				jQuery(document).ready(function($) {
+					$('#cf-webp-start-bulk').on('click', function() {
+						var $btn = $(this);
+						var $progress = $('#cf-webp-progress');
+						var $log = $('#cf-webp-log');
+						var $status = $('#cf-webp-status-text');
+						
+						$btn.prop('disabled', true);
+						$progress.show();
+						
+						function process_batch( offset ) {
+							$.post(ajaxurl, {
+								action: 'cf_webp_bulk_convert',
+								offset: offset,
+								nonce: '<?php echo wp_create_nonce( "cf_webp_bulk_nonce" ); ?>'
+							}, function(response) {
+								if ( response.success ) {
+									if ( response.data.complete ) {
+										$('.spinner').removeClass('is-active').hide();
+										$status.html('<span class="dashicons dashicons-yes-alt" style="color: #46b450; font-size: 20px; width: 20px; height: 20px;"></span> All done!');
+										$btn.prop('disabled', false);
+										$log.append('<p><strong>Conversion Complete!</strong></p>');
+									} else {
+										$log.append('<p>' + response.data.message + '</p>');
+										$log.scrollTop($log[0].scrollHeight);
+										$status.text('Processed ' + response.data.offset + ' images...');
+										process_batch( response.data.offset );
+									}
+								} else {
+									$log.append('<p style="color: red;">Error: ' + response.data + '</p>');
+									$btn.prop('disabled', false);
+								}
+							}).fail(function() {
+								$log.append('<p style="color: red;">Server Error. Retrying...</p>');
+								setTimeout(function() { process_batch(offset); }, 3000);
+							});
+						}
+						
+						process_batch(0);
+					});
+				});
+				</script>
+					
+					<!-- Convert Post URLs Section -->
+					<div class="card" style="margin-top: 20px;">
+						<h2>Convert Post URLs to WebP</h2>
+						<p>This tool will update all image URLs in your blog posts to use the .webp extension.</p>
+						<p><strong>Note:</strong> This will permanently modify post content. Make sure you have a backup before proceeding.</p>
+						<p><strong>Requirement:</strong> Run "Bulk Convert Existing Images" first to ensure WebP files exist.</p>
+						<button id="cf-webp-convert-urls" class="button button-primary">Convert Post URLs to WebP</button>
+						<div id="cf-webp-url-progress" style="margin-top: 20px; display: none;">
+							<div class="spinner is-active" style="float: none; margin: 0 10px 0 0;"></div>
+							<span id="cf-webp-url-status-text">Processing posts...</span>
+							<div id="cf-webp-url-log" style="margin-top: 10px; max-height: 300px; overflow-y: auto; background: #f0f0f1; padding: 10px; border: 1px solid #ccc;"></div>
+						</div>
+					</div>
+					<script>
+				jQuery(document).ready(function($) {
+					$('#cf-webp-convert-urls').on('click', function() {
+						var $btn = $(this);
+						var $progress = $('#cf-webp-url-progress');
+						var $log = $('#cf-webp-url-log');
+						var $status = $('#cf-webp-url-status-text');
+						
+						if (!confirm('This will permanently modify your post content. Have you created a backup?')) {
+							return;
+						}
+						
+						$btn.prop('disabled', true);
+						$progress.show();
+						$log.html('');
+						
+						var totalUpdated = 0;
+						
+						function process_posts( offset ) {
+							$.post(ajaxurl, {
+								action: 'cf_webp_convert_post_urls',
+								offset: offset,
+								nonce: '<?php echo wp_create_nonce( "cf_webp_bulk_nonce" ); ?>'
+							}, function(response) {
+								if ( response.success ) {
+									if ( response.data.complete ) {
+										$('.spinner').removeClass('is-active').hide();
+										$status.html('<span class="dashicons dashicons-yes-alt" style="color: #46b450; font-size: 20px; width: 20px; height: 20px;"></span> All posts processed!');
+										$btn.prop('disabled', false);
+										$log.append('<p><strong>URL Conversion Complete! Total posts updated: ' + totalUpdated + '</strong></p>');
+									} else {
+										if (response.data.updated) {
+											totalUpdated += response.data.updated;
+										}
+										$log.append(response.data.message);
+										$log.scrollTop($log[0].scrollHeight);
+										$status.text('Processed ' + response.data.offset + ' posts... (' + totalUpdated + ' updated)');
+										process_posts( response.data.offset );
+									}
+								} else {
+									$log.append('<p style="color: red;">Error: ' + response.data + '</p>');
+									$btn.prop('disabled', false);
+								}
+							}).fail(function() {
+								$log.append('<p style="color: red;">Server Error. Retrying...</p>');
+								setTimeout(function() { process_posts(offset); }, 3000);
+							});
+						}
+						
+						process_posts(0);
+					});
+				});
+				</script>
+					
+					<!-- Sync WebP to R2 Section -->
+					<div class="card" style="margin-top: 20px;">
+						<h2>Sync WebP Files to R2</h2>
+						<p>This tool will scan your uploads directory for WebP files that haven't been uploaded to R2 yet and upload them.</p>
+						<p><strong>Use this when:</strong> You enabled R2 after converting images, or if some uploads failed.</p>
+						<button id="cf-webp-sync-r2" class="button button-primary">Sync WebP to R2</button>
+						<div id="cf-webp-sync-progress" style="margin-top: 20px; display: none;">
+							<div class="spinner is-active" style="float: none; margin: 0 10px 0 0;"></div>
+							<span id="cf-webp-sync-status-text">Scanning files...</span>
+							<div id="cf-webp-sync-log" style="margin-top: 10px; max-height: 300px; overflow-y: auto; background: #f0f0f1; padding: 10px; border: 1px solid #ccc;"></div>
+						</div>
+					</div>
+					<script>
+				jQuery(document).ready(function($) {
+					$('#cf-webp-sync-r2').on('click', function() {
+						var $btn = $(this);
+						var $progress = $('#cf-webp-sync-progress');
+						var $log = $('#cf-webp-sync-log');
+						var $status = $('#cf-webp-sync-status-text');
+						
+						$btn.prop('disabled', true);
+						$progress.show();
+						$log.html('');
+						
+						var totalUploaded = 0;
+						var totalSkipped = 0;
+						
+						function sync_batch( offset ) {
+							$.post(ajaxurl, {
+								action: 'cf_webp_sync_r2',
+								offset: offset,
+								nonce: '<?php echo wp_create_nonce( "cf_webp_bulk_nonce" ); ?>'
+							}, function(response) {
+								if ( response.success ) {
+									if ( response.data.complete ) {
+										$('.spinner').removeClass('is-active').hide();
+										$status.html('<span class="dashicons dashicons-yes-alt" style="color: #46b450; font-size: 20px; width: 20px; height: 20px;"></span> Sync complete!');
+										$btn.prop('disabled', false);
+										$log.append('<p><strong>Sync Complete! Uploaded: ' + totalUploaded + ', Skipped: ' + totalSkipped + '</strong></p>');
+									} else {
+										if (response.data.uploaded) {
+											totalUploaded += response.data.uploaded;
+										}
+										if (response.data.skipped) {
+											totalSkipped += response.data.skipped;
+										}
+										$log.append(response.data.message);
+										$log.scrollTop($log[0].scrollHeight);
+										$status.text('Processing... (Uploaded: ' + totalUploaded + ', Skipped: ' + totalSkipped + ')');
+										sync_batch( response.data.offset );
+									}
+								} else {
+									$log.append('<p style="color: red;">Error: ' + response.data + '</p>');
+									$btn.prop('disabled', false);
+								}
+							}).fail(function() {
+								$log.append('<p style="color: red;">Server Error. Retrying...</p>');
+								setTimeout(function() { sync_batch(offset); }, 3000);
+							});
+						}
+						
+						sync_batch(0);
+					});
+				});
+				</script>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	public function show_conversion_method_notice() {
+		$screen = get_current_screen();
+		if ( $screen && $screen->id !== 'settings_page_cf-webp-converter' ) {
+			return;
+		}
+
+		$method = Cf_Webp_Worker_Client::get_conversion_method();
+		$options = get_option( 'cf_webp_settings' );
+		
+		if ( $method === 'None' ) {
+			?>
+			<div class="notice notice-error">
+				<p><strong>Easy WebP Converter:</strong> Neither GD (with WebP support) nor ImageMagick is available. Please install one of these PHP extensions to enable WebP conversion.</p>
+			</div>
+			<?php
+		} else {
+			// Determine the message based on method
+			if ( $method === 'External API' ) {
+				$message = 'Using <strong>External API</strong> for WebP conversion.';
+			} else {
+				$message = 'Using <strong>' . esc_html( $method ) . '</strong> for local WebP conversion.';
+			}
+			?>
+			<div class="notice notice-info">
+				<p><strong>Easy WebP Converter:</strong> <?php echo $message; ?></p>
+			</div>
+			<?php
+		}
+	}
+}
