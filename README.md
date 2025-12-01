@@ -266,6 +266,17 @@ A: No. The plugin uses filters to replace URLs on-the-fly. Original content is u
 
 ## Changelog
 
+### Version 1.1.0
+- **Added:** R2 Sync Tool for existing WebP files
+- **Added:** Support for all image size variants (thumbnails, medium, large)
+- **Added:** Robust 3-tier fallback mechanism (R2 -> Local -> Original)
+- **Added:** Direct WebP upload support
+- **Added:** Option to choose URL type (Local/R2) for post conversion
+- **Fixed:** Responsive images (`srcset`) now use R2 URLs
+- **Fixed:** Media Library previews now work correctly
+- **Fixed:** Original file deletion logic to prevent broken media
+- **Changed:** Renamed to "WP Easy WebP"
+
 ### Version 1.0.0
 - Initial release
 - Automatic WebP conversion on upload
@@ -274,9 +285,6 @@ A: No. The plugin uses filters to replace URLs on-the-fly. Original content is u
 - Cloudflare R2 CDN offload
 - Bulk conversion tool
 - Post URL converter
-- R2 sync tool
-- Image size variant support
-- Dynamic URL replacement
 
 ## Support
 
