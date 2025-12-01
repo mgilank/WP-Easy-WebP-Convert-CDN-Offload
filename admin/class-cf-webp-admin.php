@@ -126,6 +126,22 @@ class Cf_Webp_Admin {
 			'cf_webp_general_section',
 			array( 'label_for' => 'external_api_key', 'type' => 'password', 'placeholder' => 'Leave empty if no API key required' )
 		);
+		
+		add_settings_field(
+			'preferred_url_type',
+			'Preferred URL Type for Post Conversion',
+			array( $this, 'render_radio_field' ),
+			'cf-webp-converter',
+			'cf_webp_general_section',
+			array( 
+				'label_for' => 'preferred_url_type',
+				'options' => array(
+					'local' => 'Local WebP',
+					'r2' => 'R2 CDN'
+				),
+				'description' => 'Default URL type when converting post content URLs to WebP.'
+			)
+		);
 	}
 
 	public function sanitize_settings( $input ) {
@@ -168,6 +184,10 @@ class Cf_Webp_Admin {
         $new_input['external_api_key'] = isset( $input['external_api_key'] ) && $input['external_api_key'] !== '' 
             ? sanitize_text_field( $input['external_api_key'] ) 
             : ( isset( $existing_options['external_api_key'] ) ? $existing_options['external_api_key'] : '' );
+        
+        $new_input['preferred_url_type'] = isset( $input['preferred_url_type'] ) && in_array( $input['preferred_url_type'], array( 'local', 'r2' ) )
+            ? sanitize_text_field( $input['preferred_url_type'] )
+            : 'local';
 
 		return $new_input;
 	}
@@ -189,6 +209,23 @@ class Cf_Webp_Admin {
 		echo '<input type="checkbox" id="' . $id . '" name="' . $this->option_name . '[' . $id . ']" value="1" ' . $checked . '>';
         echo $description;
 	}
+	
+	public function render_radio_field( $args ) {
+		$options = get_option( $this->option_name );
+		$id = $args['label_for'];
+		$current_value = isset( $options[$id] ) ? $options[$id] : 'local';
+		$radio_options = isset( $args['options'] ) ? $args['options'] : array();
+		$description = isset( $args['description'] ) ? '<p class="description">' . $args['description'] . '</p>' : '';
+		
+		foreach ( $radio_options as $value => $label ) {
+			$checked = ( $current_value === $value ) ? 'checked' : '';
+			echo '<label style="display: block; margin: 5px 0;">';
+			echo '<input type="radio" name="' . $this->option_name . '[' . $id . ']" value="' . esc_attr( $value ) . '" ' . $checked . '> ';
+			echo esc_html( $label );
+			echo '</label>';
+		}
+		echo $description;
+	}
 
 	public function display_plugin_setup_page() {
 		$active_tab = isset( $_GET['tab'] ) ? $_GET['tab'] : 'settings';
@@ -197,7 +234,7 @@ class Cf_Webp_Admin {
 			<h1>Easy WebP Converter & CDN Offload</h1>
 			<h2 class="nav-tab-wrapper">
 				<a href="?page=cf-webp-converter&tab=settings" class="nav-tab <?php echo $active_tab == 'settings' ? 'nav-tab-active' : ''; ?>">Settings</a>
-				<a href="?page=cf-webp-converter&tab=bulk" class="nav-tab <?php echo $active_tab == 'bulk' ? 'nav-tab-active' : ''; ?>">Bulk Convert</a>
+				<a href="?page=cf-webp-converter&tab=bulk" class="nav-tab <?php echo $active_tab == 'bulk' ? 'nav-tab-active' : ''; ?>">Tools</a>
 			</h2>
 
 			<?php if ( $active_tab == 'settings' ) : ?>
@@ -351,6 +388,23 @@ class Cf_Webp_Admin {
 						<p>This tool will update all image URLs in your blog posts to use the .webp extension.</p>
 						<p><strong>Note:</strong> This will permanently modify post content. Make sure you have a backup before proceeding.</p>
 						<p><strong>Requirement:</strong> Run "Bulk Convert Existing Images" first to ensure WebP files exist.</p>
+						
+						<div style="margin: 15px 0;">
+							<p><strong>Choose URL type:</strong> (You can change the default in Settings tab)</p>
+							<?php 
+							$options = get_option( 'cf_webp_settings' );
+							$preferred_type = isset( $options['preferred_url_type'] ) ? $options['preferred_url_type'] : 'local';
+							?>
+							<label style="display: block; margin: 8px 0;">
+								<input type="radio" name="url_type" value="local" <?php checked( $preferred_type, 'local' ); ?>>
+								<strong>Local WebP</strong> - Use local WebP files (e.g., /uploads/image.webp)
+							</label>
+							<label style="display: block; margin: 8px 0;">
+								<input type="radio" name="url_type" value="r2" <?php checked( $preferred_type, 'r2' ); ?>>
+								<strong>R2 CDN</strong> - Use R2 CDN URLs (e.g., https://cdn.example.com/uploads/image.webp)
+							</label>
+						</div>
+						
 						<button id="cf-webp-convert-urls" class="button button-primary">Convert Post URLs to WebP</button>
 						<div id="cf-webp-url-progress" style="margin-top: 20px; display: none;">
 							<div class="spinner is-active" style="float: none; margin: 0 10px 0 0;"></div>
@@ -376,10 +430,14 @@ class Cf_Webp_Admin {
 						
 						var totalUpdated = 0;
 						
+						// Get selected URL type
+						var urlType = $('input[name="url_type"]:checked').val();
+						
 						function process_posts( offset ) {
 							$.post(ajaxurl, {
 								action: 'cf_webp_convert_post_urls',
 								offset: offset,
+								url_type: urlType,
 								nonce: '<?php echo wp_create_nonce( "cf_webp_bulk_nonce" ); ?>'
 							}, function(response) {
 								if ( response.success ) {

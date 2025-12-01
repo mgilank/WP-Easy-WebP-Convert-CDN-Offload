@@ -121,6 +121,7 @@ class Cf_Webp_Bulk_Handler {
 
         $offset = isset( $_POST['offset'] ) ? intval( $_POST['offset'] ) : 0;
         $batch_size = 10; // Process 10 posts at a time
+        $url_type = isset( $_POST['url_type'] ) ? sanitize_text_field( $_POST['url_type'] ) : 'local';
 
         $args = array(
             'post_type'      => 'post',
@@ -146,6 +147,10 @@ class Cf_Webp_Bulk_Handler {
         $upload_path = $upload_dir['basedir'];
         $log = '';
         $updated_count = 0;
+        
+        // Get R2 settings if using R2 URLs
+        $options = get_option( 'cf_webp_settings' );
+        $r2_domain = isset( $options['r2_domain'] ) ? rtrim( $options['r2_domain'], '/' ) : '';
 
         foreach ( $posts as $post ) {
             $content = $post->post_content;
@@ -162,30 +167,69 @@ class Cf_Webp_Bulk_Handler {
             $replacements = 0;
             
             foreach ( $matches[1] as $img_url ) {
-                // Skip if already WebP
-                if ( preg_match( '/\.webp$/i', $img_url ) ) {
-                    continue;
-                }
-                
                 // Skip external URLs
-                if ( strpos( $img_url, $upload_url ) === false ) {
+                if ( strpos( $img_url, $upload_url ) === false && strpos( $img_url, $r2_domain ) === false ) {
                     continue;
                 }
                 
-                // Check if it's a JPG or PNG
-                if ( ! preg_match( '/\.(jpe?g|png)$/i', $img_url ) ) {
+                // Determine if this is already a WebP URL
+                $is_webp = preg_match( '/\.webp$/i', $img_url );
+                $is_r2_url = ! empty( $r2_domain ) && strpos( $img_url, $r2_domain ) !== false;
+                $is_local_url = strpos( $img_url, $upload_url ) !== false;
+                
+                // Check if it's an image we can process (JPG, PNG, or WebP)
+                if ( ! preg_match( '/\.(jpe?g|png|webp)$/i', $img_url ) ) {
                     continue;
                 }
                 
-                // Convert URL to file path
-                $file_path = str_replace( $upload_url, $upload_path, $img_url );
+                // Determine the file path for verification
+                $file_path = '';
+                if ( $is_r2_url ) {
+                    // Extract relative path from R2 URL
+                    $relative_path = str_replace( $r2_domain . '/', '', $img_url );
+                    $file_path = $upload_path . '/' . $relative_path;
+                } else {
+                    // Convert local URL to file path
+                    $file_path = str_replace( $upload_url, $upload_path, $img_url );
+                }
+                
+                // Get WebP file path
                 $path_info = pathinfo( $file_path );
-                $webp_path = $path_info['dirname'] . '/' . $path_info['filename'] . '.webp';
+                if ( $is_webp ) {
+                    $webp_path = $file_path; // Already WebP
+                } else {
+                    $webp_path = $path_info['dirname'] . '/' . $path_info['filename'] . '.webp';
+                }
                 
                 // Check if WebP file exists
                 if ( file_exists( $webp_path ) ) {
-                    // Create WebP URL
-                    $webp_url = preg_replace( '/\.(jpe?g|png)$/i', '.webp', $img_url );
+                    $webp_url = '';
+                    
+                    if ( $url_type === 'r2' && ! empty( $r2_domain ) ) {
+                        // Convert to R2 CDN URL
+                        $relative_path = str_replace( $upload_path . '/', '', $webp_path );
+                        $webp_url = $r2_domain . '/' . $relative_path;
+                        
+                        // Skip if already R2 URL and same
+                        if ( $img_url === $webp_url ) {
+                            continue;
+                        }
+                    } else {
+                        // Convert to local WebP URL
+                        if ( $is_r2_url ) {
+                            // Convert from R2 to local
+                            $relative_path = str_replace( $upload_path . '/', '', $webp_path );
+                            $webp_url = $upload_url . '/' . $relative_path;
+                        } else {
+                            // Convert from JPG/PNG to local WebP
+                            $webp_url = preg_replace( '/\.(jpe?g|png)$/i', '.webp', $img_url );
+                        }
+                        
+                        // Skip if already local WebP URL and same
+                        if ( $img_url === $webp_url ) {
+                            continue;
+                        }
+                    }
                     
                     // Replace in content
                     $content = str_replace( $img_url, $webp_url, $content );
@@ -201,7 +245,8 @@ class Cf_Webp_Bulk_Handler {
                 ) );
                 
                 $updated_count++;
-                $log .= "Post ID {$post->ID}: Updated {$replacements} image(s) to WebP.<br>";
+                $url_type_label = $url_type === 'r2' ? 'R2 CDN' : 'Local';
+                $log .= "Post ID {$post->ID}: Updated {$replacements} image(s) to {$url_type_label} WebP.<br>";
             } else {
                 $log .= "Post ID {$post->ID}: No changes needed.<br>";
             }
