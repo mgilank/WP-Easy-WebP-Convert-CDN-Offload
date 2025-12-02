@@ -1,11 +1,11 @@
 <?php
 /**
  * Plugin Name: Easy WebP Converter & CDN Offload
- * Plugin URI:  https://example.com
+ * Plugin URI:  https://jetorbit.dev
  * Description: Convert images to WebP format using local PHP (GD/ImageMagick) or external API, with optional R2/CDN offloading.
  * Version:     1.1.0
- * Author:      Your Name
- * Author URI:  https://example.com
+ * Author:      Jetorbit Dev
+ * Author URI:  https://www.threads.com/@mgilank
  * License:     GPL2
  * Text Domain: cf-webp-converter
  */
