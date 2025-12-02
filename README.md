@@ -165,7 +165,7 @@ When R2 is disabled:
 
 ```
 WP-Easy-WebP/
-├── cf-webp-converter.php       # Main plugin file
+├── webp-converter.php          # Main plugin file
 ├── admin/
 │   └── class-cf-webp-admin.php # Admin interface
 ├── includes/
