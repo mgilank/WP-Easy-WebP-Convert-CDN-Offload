@@ -22,7 +22,9 @@ class Cf_Webp_Bulk_Handler {
         }
 
         $offset = isset( $_POST['offset'] ) ? intval( $_POST['offset'] ) : 0;
+        $force_rerun = isset( $_POST['force_rerun'] ) && intval( $_POST['force_rerun'] ) === 1;
         $batch_size = 5; // Process 5 images at a time to avoid timeout
+        $had_error = false;
 
         $args = array(
             'post_type'      => 'attachment',
@@ -39,7 +41,7 @@ class Cf_Webp_Bulk_Handler {
         $posts = $query->posts;
 
         if ( empty( $posts ) ) {
-            wp_send_json_success( array( 'complete' => true, 'message' => 'No more images to process.' ) );
+            wp_send_json_success( array( 'complete' => true, 'message' => 'No more images to process.', 'had_error' => false ) );
         }
 
 
@@ -50,28 +52,39 @@ class Cf_Webp_Bulk_Handler {
             $table_name = $wpdb->prefix . 'cf_webp_status';
             $row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table_name WHERE attachment_id = %d", $post_id ) );
 
+            // If forcing rerun, drop previous status to reprocess from scratch
+            if ( $force_rerun && $row ) {
+                $wpdb->delete( $table_name, array( 'attachment_id' => $post_id ), array( '%d' ) );
+                $row = null;
+            }
+
             if ( $row ) {
-                // Already converted, check if we need to upload to R2
+                // Already has a status record; decide based on state
                 $options = get_option( 'cf_webp_settings' );
                 $r2_enabled = isset( $options['enable_r2'] ) && $options['enable_r2'];
-                
-                // If R2 is enabled but this file hasn't been uploaded yet
+
+                // If previous attempt failed, retry full processing
+                if ( $row->status === 'error' ) {
+                    $metadata = wp_get_attachment_metadata( $post_id );
+                    $this->processor->process_attachment( $metadata, $post_id );
+                    $log .= "Reprocessed ID $post_id (previous error).<br>";
+                    continue;
+                }
+
+                // If R2 is enabled but file is only converted locally, try upload
                 if ( $r2_enabled && $row->status === 'converted' ) {
                     $file_path = get_attached_file( $post_id );
                     $path_info = pathinfo( $file_path );
                     $webp_path = $path_info['dirname'] . '/' . $path_info['filename'] . '.webp';
-                    
+
                     if ( file_exists( $webp_path ) ) {
-                        // Upload to R2
-                        $path_info = pathinfo( $webp_path );
                         $upload_dir = wp_upload_dir();
                         $relative_path = str_replace( $upload_dir['basedir'] . '/', '', $webp_path );
-                        
+
                         $r2_client = new Cf_Webp_R2_Client();
                         $r2_url = $r2_client->upload_file( $webp_path, $relative_path, 'image/webp' );
-                        
+
                         if ( ! is_wp_error( $r2_url ) ) {
-                            // Update status to uploaded
                             $wpdb->update(
                                 $table_name,
                                 array(
@@ -90,22 +103,33 @@ class Cf_Webp_Bulk_Handler {
                     } else {
                         $log .= "WebP file not found for ID $post_id.<br>";
                     }
-                } else {
-                    $log .= "Skipping ID $post_id (Already processed).<br>";
+                    continue;
                 }
-            } else {
-                // Trigger the processor manually
-                // We need to fetch metadata first
-                $metadata = wp_get_attachment_metadata( $post_id );
-                $this->processor->process_attachment( $metadata, $post_id );
-                $log .= "Processed ID $post_id.<br>";
+
+                $log .= "Skipping ID $post_id (Already processed).<br>";
+                continue;
             }
+
+            // No prior record; process now
+            $metadata = wp_get_attachment_metadata( $post_id );
+                $this->processor->process_attachment( $metadata, $post_id );
+
+                // Inspect status to surface errors (e.g., invalid API key)
+                $status_row = $wpdb->get_row( $wpdb->prepare( "SELECT status, error_message FROM $table_name WHERE attachment_id = %d", $post_id ) );
+                if ( $status_row && $status_row->status === 'error' ) {
+                    $error_msg = ! empty( $status_row->error_message ) ? $status_row->error_message : 'Conversion failed.';
+                    $log .= "Error ID $post_id: " . esc_html( $error_msg ) . "<br>";
+                    $had_error = true;
+                } else {
+                    $log .= "Processed ID $post_id.<br>";
+                }
         }
 
         wp_send_json_success( array( 
             'complete' => false, 
             'offset' => $offset + $batch_size,
-            'message' => $log 
+            'message' => $log,
+            'had_error' => $had_error,
         ) );
     }
 

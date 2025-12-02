@@ -148,10 +148,13 @@ class Cf_Webp_Worker_Client {
 			return $response;
 		}
 
-		$response_code = wp_remote_retrieve_response_code( $response );
-		if ( 200 !== $response_code ) {
-			return new WP_Error( 'api_error', 'External API returned error: ' . $response_code . ' ' . wp_remote_retrieve_body( $response ) );
-		}
+        $response_code = wp_remote_retrieve_response_code( $response );
+        if ( 200 !== $response_code ) {
+            if ( $response_code === 401 || $response_code === 403 ) {
+                return new WP_Error( 'api_auth', 'External API authentication failed: invalid API key or permissions.' );
+            }
+            return new WP_Error( 'api_error', 'External API returned error: ' . $response_code . ' ' . wp_remote_retrieve_body( $response ) );
+        }
 
 		return wp_remote_retrieve_body( $response );
 	}

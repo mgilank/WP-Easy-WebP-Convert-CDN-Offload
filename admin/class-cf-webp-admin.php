@@ -405,15 +405,21 @@ class Cf_Webp_Admin {
 				});
 				</script>
 			<?php else : ?>
-				<div class="card">
-					<h2>Bulk Convert Existing Images</h2>
-					<p>This tool will scan your Media Library for images that haven't been converted yet and process them.</p>
-					<p><strong>Note:</strong> Keep this tab open while the process runs.</p>
-					<button id="cf-webp-start-bulk" class="button button-primary">Start Bulk Conversion</button>
-					<div id="cf-webp-progress" style="margin-top: 20px; display: none;">
-						<div class="spinner is-active" style="float: none; margin: 0 10px 0 0;"></div>
-						<span id="cf-webp-status-text">Processing...</span>
-						<div id="cf-webp-log" style="margin-top: 10px; max-height: 300px; overflow-y: auto; background: #f0f0f1; padding: 10px; border: 1px solid #ccc;"></div>
+					<div class="card">
+						<h2>Bulk Convert Existing Images</h2>
+						<p>This tool will scan your Media Library for images that haven't been converted yet and process them.</p>
+						<p><strong>Note:</strong> Keep this tab open while the process runs.</p>
+						<p>
+							<label>
+								<input type="checkbox" id="cf-webp-force-rerun" value="1">
+								Force re-run (reconvert even if marked as processed)
+							</label>
+						</p>
+						<button id="cf-webp-start-bulk" class="button button-primary">Start Bulk Conversion</button>
+						<div id="cf-webp-progress" style="margin-top: 20px; display: none;">
+							<div class="spinner is-active" style="float: none; margin: 0 10px 0 0;"></div>
+							<span id="cf-webp-status-text">Processing...</span>
+							<div id="cf-webp-log" style="margin-top: 10px; max-height: 300px; overflow-y: auto; background: #f0f0f1; padding: 10px; border: 1px solid #ccc;"></div>
 					</div>
 				</div>
 				<script>
@@ -427,18 +433,30 @@ class Cf_Webp_Admin {
 						$btn.prop('disabled', true);
 						$progress.show();
 						
+						var forceRerun = $('#cf-webp-force-rerun').is(':checked') ? 1 : 0;
+						var hasErrors = false;
+
 						function process_batch( offset ) {
 							$.post(ajaxurl, {
 								action: 'cf_webp_bulk_convert',
 								offset: offset,
+								force_rerun: forceRerun,
 								nonce: '<?php echo wp_create_nonce( "cf_webp_bulk_nonce" ); ?>'
 							}, function(response) {
 								if ( response.success ) {
+									if ( response.data.had_error ) {
+										hasErrors = true;
+									}
 									if ( response.data.complete ) {
 										$('.spinner').removeClass('is-active').hide();
-										$status.html('<span class="dashicons dashicons-yes-alt" style="color: #46b450; font-size: 20px; width: 20px; height: 20px;"></span> All done!');
+										if ( hasErrors || response.data.had_error ) {
+											$status.html('<span class="dashicons dashicons-warning" style="color: #d63638; font-size: 20px; width: 20px; height: 20px;"></span> Conversion failed. Check log for details.');
+											$log.append('<p><strong>Conversion Failed. See log for errors.</strong></p>');
+										} else {
+											$status.html('<span class="dashicons dashicons-yes-alt" style="color: #46b450; font-size: 20px; width: 20px; height: 20px;"></span> All done!');
+											$log.append('<p><strong>Conversion Complete!</strong></p>');
+										}
 										$btn.prop('disabled', false);
-										$log.append('<p><strong>Conversion Complete!</strong></p>');
 									} else {
 										$log.append('<p>' + response.data.message + '</p>');
 										$log.scrollTop($log[0].scrollHeight);
